@@ -1,24 +1,19 @@
-from selenium.webdriver.support import expected_conditions as EC
 from webdriver_manager.chrome import ChromeDriverManager
-from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.common.by import By
-from selenium.common.exceptions import TimeoutException
-from selenium.webdriver import ActionChains
 from selenium import webdriver
-from datetime import datetime
 from threading import Thread
 from time import sleep
-import numpy as np
-from typing import Literal
-import random
-import sys
+import requests
 import os
 
+
+
 global driver
+
 path = '.\\chromedriver.exe' if 'chromedriver.exe' in os.listdir() else ChromeDriverManager().install()
 options = webdriver.ChromeOptions()
-driver = webdriver.Chrome(service=Service(path),options=options,keep_alive=True)
+driver = webdriver.Chrome(service=Service(path),options=options)
 
 URL = 'http://192.168.1.1'
 
@@ -26,8 +21,61 @@ USER = '1234'
 PASSWORD = '1234'
 
 
+class NoConnection(Exception):...
+
+
+def wait_until_connection():
+    def is_connected():
+        try:
+            requests.get('google.com')
+            print('Connected')
+            return True
+        
+        except Exception:
+            print('Waiting for connection')
+            return True 
+    
+    while not is_connected:
+        sleep(15)
+    return True
+        
+    
+
+
+
+
+def on_thread(_func=None,*,reps=1,loop=False,timeout=600):
+    global l
+    l = loop
+    def decorator(func):
+        def wrapper(*args, **kwargs):
+            if l:
+                def loop(*args,**kwargs):
+                    while True:
+                        func(*args, **kwargs)
+                        sleep(timeout)
+            else:
+                def loop(*args,**kwargs):
+                    for _ in range(reps):
+                        func(*args, **kwargs)
+                        sleep(timeout)
+                        
+            t = Thread(target=loop,args=args,kwargs=kwargs)
+                
+            t.start()
+            
+            return 0
+        return wrapper
+    
+    if _func is None:
+        return decorator
+    else:
+        return decorator(_func)
+            
+    
 
 def login(user,password):
+    '''Log In '''
     #USERNAME
     username_input = driver.find_element(By.XPATH,'//*[@id="orgusername"]')
     username_input.send_keys(user)
@@ -38,10 +86,11 @@ def login(user,password):
     login_button = driver.find_element(By.XPATH,'//*[@id="login_btn"]')
     login_button.click()
     
+    
 
 def get_network_info()->dict:
     '''IPv4 WAN Connection Status
-    Returned dict's Keys: 'ConnectionName','Type','IPAddress','DefaultGateway','PrimaryDNS','SecondaryDNS','Status' '''
+    Returned a dict (keys: 'ConnectionName', 'Type', 'IPAddress', 'DefaultGateway', 'PrimaryDNS', 'SecondaryDNS', 'Status') '''
     #get the network info page
     driver.get(URL+'/page/status/status_wannetwork.shtml')
     #get data
@@ -55,31 +104,39 @@ def get_network_info()->dict:
     return data_dict
 
 
+
 def reboot():
-    '''clicks the reboot button'''
-    #get the reboot page
-    driver.get(URL+'/page/management/mngt_reboot.shtml')
+    '''Reboot'''
+    #get the reboot page - it reboots automatically
+    driver.get(URL+'/page/management/mngt_restart.shtml')
+    wait_until_connection()
+    driver.refresh()
+    login(USER,PASSWORD)
     
-    #get reboot button
-    reboot_button = driver.find_element(By.XPATH,'//*[@id="reboot"]')
-    reboot_button.click()
-    
-    #TODO: Puede que al reiniciar se caiga selenium, no esta testeado
-    
-    driver.back()
-    
-    return True
 
 
-    
-    
-    
-    
 def main():
     driver.get(URL)
     login(USER,PASSWORD)
-    print(get_network_info())
+    print(get_network_info()['IPAddress'])
+
+
+
+@on_thread(loop=True,timeout=60*15)
+def subrutine():
+    print('Rebooting',end='... ')
+    reboot()
+    new_ip = get_network_info()['IPAdress']
+    if new_ip:
+        print('Success')
+        print('New ip:',new_ip)
+    
+    else:
+        print('Failed')
+    
+    
     
     
 if __name__ == '__main__':
     main()
+    subrutine()
